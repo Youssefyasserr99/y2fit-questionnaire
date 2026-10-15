@@ -40,11 +40,12 @@ details.more{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
 <form id="f" novalidate></form>
 <div class="card done" id="done">
 <h2>Thank you!</h2>
-<div id="waRow"><p>Tap the button below — WhatsApp opens with your answers ready. Just press <b>Send</b>.</p>
-<p><button class="btn main" type="button" id="wa">Send my answers to my coach on WhatsApp</button></p></div>
-<p id="shareRow"><button class="btn" type="button" id="share">Share answers file…</button></p>
+<p>Last step: send your answers file to your coach.</p>
+<p><button class="btn main" type="button" id="share">Send my answers file to my coach</button></p>
+<p class="note" id="shareHint">Tap the button, choose <b>WhatsApp</b>, choose your coach’s chat and press <b>Send</b>.</p>
+<p class="note" id="dlHint" style="display:none">Your answers file was saved to your phone (Downloads / Files). Open WhatsApp, go to your coach’s chat, tap 📎 → <b>Document</b> and choose the file that starts with “y2fit-answers”.</p>
+<p id="waRow"><button class="btn" type="button" id="wa">Or send my answers as a WhatsApp message</button></p>
 <p><button class="btn" type="button" id="dl">Download answers file</button></p>
-<p class="note">Please don’t change the message — your coach imports it directly.</p>
 </div>
 <p class="privacy">Privacy: this page works offline and does not send your answers anywhere by itself. Your answers stay on this device until you send the file to your coach.</p>
 </div>
@@ -88,26 +89,34 @@ function refresh(){def.sections.forEach(function(s){s.questions.forEach(function
 function missing(){var out=[];def.sections.forEach(function(s){s.questions.forEach(function(q){if(q.required&&visible(q)&&(a[q.id]==null||a[q.id]===''))out.push(q);});});return out;}
 function payload(){var ans={};def.sections.forEach(function(s){s.questions.forEach(function(q){if(visible(q)&&a[q.id]!=null)ans[q.id]=a[q.id];});});
  return JSON.stringify({format:def.format,version:def.version,token:token||null,submittedAt:new Date().toISOString(),answers:ans},null,1);}
-function fileName(){var n=String(a.full_name||'client').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'client';var d=new Date();var p=function(x){return(x<10?'0':'')+x;};return 'y2fit-answers-'+n+'-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'.json';}
-function download(){var b=new Blob([payload()],{type:'application/json'});var u=URL.createObjectURL(b);var l=document.createElement('a');l.href=u;l.download=fileName();document.body.appendChild(l);l.click();setTimeout(function(){URL.revokeObjectURL(u);l.remove();},1500);}
+var ready=null;
+function show(q,v){if(Array.isArray(v))return v.join(', ');if(v===true)return 'Yes';if(v===false)return 'No';return String(v)+(q&&q.unit&&q.type==='number'?' '+q.unit:'');}
+function textFile(c){var L=['Y2Fit questionnaire answers'];var name=String(a.full_name||'').trim();if(name)L.push('Name: '+name);L.push('Completed: '+new Date().toLocaleString());L.push('');
+ def.sections.forEach(function(s){var rows=s.questions.filter(function(q){return visible(q)&&a[q.id]!=null;});if(!rows.length)return;L.push('== '+s.title+' ==');rows.forEach(function(q){L.push(q.label+(/[?:]$/.test(q.label)?' ':': ')+show(q,a[q.id]));});L.push('');});
+ L.push('--- Y2Fit import code (do not change) ---');L.push(c);return L.join('\r\n');}
+function prepare(){ready=null;return code().then(function(c){var f=new File([textFile(c)],fileName(),{type:'text/plain'});ready={file:f,code:c};return ready;});}
+function fileName(){var n=String(a.full_name||'client').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'client';var d=new Date();var p=function(x){return(x<10?'0':'')+x;};return 'y2fit-answers-'+n+'-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'.txt';}
+function saveFile(f){var u=URL.createObjectURL(f);var l=document.createElement('a');l.href=u;l.download=f.name;document.body.appendChild(l);l.click();setTimeout(function(){URL.revokeObjectURL(u);l.remove();},2000);document.getElementById('dlHint').style.display='';document.getElementById('shareHint').style.display='none';}
+function canShareFile(f){try{return !!(navigator.canShare&&navigator.canShare({files:[f]}));}catch(e){return false;}}
 document.getElementById('finish').onclick=function(){Array.prototype.forEach.call(document.querySelectorAll('.bad'),function(x){x.classList.remove('bad');});
  var m=missing();if(m.length){m.forEach(function(q){var n=nodes[q.id];if(n){n.classList.add('bad');var p=n.parentNode;if(p&&p.tagName==='DETAILS')p.open=true;}});var f=nodes[m[0].id];if(f)f.scrollIntoView({behavior:'smooth',block:'center'});alertMsg('Please answer the required questions (marked *).');return;}
- var d=document.getElementById('done');d.classList.add('show');d.scrollIntoView({behavior:'smooth'});};
+ prepare();var d=document.getElementById('done');d.classList.add('show');d.scrollIntoView({behavior:'smooth'});};
 function alertMsg(t){var e=document.getElementById('msg');if(!e){e=el('div','err');e.id='msg';document.querySelector('.bar').appendChild(e);}e.textContent=t;setTimeout(function(){e.textContent='';},5000);}
-document.getElementById('dl').onclick=download;
 function b64(bytes){var s='';for(var i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));return btoa(s);}
 function code(){var json=payload();var raw=new TextEncoder().encode(json);
  if(typeof CompressionStream==='function'){try{var cs=new CompressionStream('deflate-raw');var w=cs.writable.getWriter();w.write(raw);w.close();
   return new Response(cs.readable).arrayBuffer().then(function(buf){return 'Y2FIT1-D:'+b64(new Uint8Array(buf));}).catch(function(){return 'Y2FIT1-J:'+b64(raw);});}catch(e){}}
  return Promise.resolve('Y2FIT1-J:'+b64(raw));}
-var waBtn=document.getElementById('wa');
+function withFile(fn){if(ready)fn(ready);else prepare().then(fn);}
+document.getElementById('share').onclick=function(){
+ // The file is prepared when “Finish” is pressed, so the share sheet opens straight from the tap.
+ if(ready&&canShareFile(ready.file)){navigator.share({files:[ready.file]}).catch(function(e){if(e&&e.name!=='AbortError')saveFile(ready.file);});return;}
+ withFile(function(r){if(canShareFile(r.file)){navigator.share({files:[r.file]}).catch(function(e){if(e&&e.name!=='AbortError')saveFile(r.file);});}else saveFile(r.file);});};
+document.getElementById('dl').onclick=function(){withFile(function(r){saveFile(r.file);});};
 if(!def.coachWhatsapp)document.getElementById('waRow').style.display='none';
-waBtn.onclick=function(){code().then(function(c){var name=String(a.full_name||'').trim();
- var msg='Y2Fit questionnaire'+(name?' – '+name:'')+'\n(Please send this message without changing it.)\n\n'+c;
+document.getElementById('wa').onclick=function(){withFile(function(r){var name=String(a.full_name||'').trim();
+ var msg='Y2Fit questionnaire'+(name?' – '+name:'')+'\n(Please send this message without changing it.)\n\n'+r.code;
  location.href='https://wa.me/'+def.coachWhatsapp+'?text='+encodeURIComponent(msg);});};
-var sh=document.getElementById('share');
-sh.onclick=function(){try{var f=new File([payload()],fileName(),{type:'application/json'});if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:'My questionnaire answers'}).catch(function(){});}else download();}catch(e){download();}};
-try{if(!(navigator.canShare&&navigator.canShare({files:[new File(['x'],'x.json',{type:'application/json'})]})))document.getElementById('shareRow').style.display='none';}catch(e){document.getElementById('shareRow').style.display='none';}
 rebuild();
 })();
 </script>
